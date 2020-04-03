@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Spottedleaf <spottedleaf@spottedleaf.dev>
+Date: Fri, 3 Apr 2020 02:21:13 -0700
+Subject: [PATCH] Always able to execute tasks on the main server queue
+
+This should move all queued packet execution into the main server
+tick loop, so this will free up some time for oversleep to act on
+chunks.
+
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index 2acd6bf240c58f8179b20511e6fcf753dab2c047..f9f67ccfaae2f55c0a5ce361e6a65beba9e218d8 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -1023,7 +1023,7 @@ public abstract class MinecraftServer extends IAsyncTaskHandlerReentrant<TickTas
+     }
+ 
+     protected boolean canExecute(TickTask ticktask) {
+-        return ticktask.a() + 3 < this.ticks || this.canSleepForTick();
++        return true; // Tuinity - always able to execute tasks
+     }
+ 
+     @Override
