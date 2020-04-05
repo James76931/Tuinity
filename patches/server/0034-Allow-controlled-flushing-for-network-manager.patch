@@ -9,24 +9,10 @@ This patch will be used to optimise out flush calls in later
 patches.
 
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index 77aa911c9830170b9f4b5cdf4e0ee2d4ae0d9a99..005f955cd4db5252ab2a7ed387b4dd91132bc03f 100644
+index 77aa911c9830170b9f4b5cdf4e0ee2d4ae0d9a99..9b3869a21e5ee3c33cdfcb8e468b3006d3bc2bd0 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
-@@ -166,7 +166,13 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
-     public void sendPacket(Packet<?> packet, @Nullable GenericFutureListener<? extends Future<? super Void>> genericfuturelistener) {
-         if (this.isConnected() && this.sendPacketQueue() && !(packet instanceof PacketPlayOutMapChunk && !((PacketPlayOutMapChunk) packet).isReady())) { // Paper - Async-Anti-Xray - Add chunk packets which are not ready or all packets if the packet queue contains chunk packets which are not ready to the packet queue and send the packets later in the right order
-             //this.o(); // Paper - Async-Anti-Xray - Move to if statement (this.sendPacketQueue())
-+            // Tuinity start - controlled flushing
-+            if (this.canFlush && this.packetQueue.isEmpty()) {
-             this.b(packet, genericfuturelistener);
-+            } else {
-+                this.packetQueue.add(new NetworkManager.QueuedPacket(packet, genericfuturelistener));
-+            }
-+            // Tuinity end - controlled flushing
-         } else {
-             this.packetQueue.add(new NetworkManager.QueuedPacket(packet, genericfuturelistener));
-         }
-@@ -175,6 +181,11 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -175,6 +175,11 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
  
      private void dispatchPacket(Packet<?> packet, @Nullable GenericFutureListener<? extends Future<? super Void>> genericFutureListener) { this.b(packet, genericFutureListener); } // Paper - OBFHELPER
      private void b(Packet<?> packet, @Nullable GenericFutureListener<? extends Future<? super Void>> genericfuturelistener) {
@@ -38,7 +24,7 @@ index 77aa911c9830170b9f4b5cdf4e0ee2d4ae0d9a99..005f955cd4db5252ab2a7ed387b4dd91
          EnumProtocol enumprotocol = EnumProtocol.a(packet);
          EnumProtocol enumprotocol1 = (EnumProtocol) this.channel.attr(NetworkManager.c).get();
  
-@@ -191,7 +202,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -191,7 +196,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
                  this.setProtocol(enumprotocol);
              }
  
@@ -47,7 +33,7 @@ index 77aa911c9830170b9f4b5cdf4e0ee2d4ae0d9a99..005f955cd4db5252ab2a7ed387b4dd91
  
              if (genericfuturelistener != null) {
                  channelfuture.addListener(genericfuturelistener);
-@@ -204,7 +215,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -204,7 +209,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
                      // note: don't add the genericfuturelistener, it's only expected to be called once...
                      this.channel.write(extraPacket).addListener(ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE);
                  }
@@ -56,7 +42,7 @@ index 77aa911c9830170b9f4b5cdf4e0ee2d4ae0d9a99..005f955cd4db5252ab2a7ed387b4dd91
              }
              // Tuinity end - make only one flush call for writing packets
          } else {
-@@ -213,7 +224,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -213,7 +218,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
                      this.setProtocol(enumprotocol);
                  }
  
@@ -65,7 +51,7 @@ index 77aa911c9830170b9f4b5cdf4e0ee2d4ae0d9a99..005f955cd4db5252ab2a7ed387b4dd91
  
                  if (genericfuturelistener != null) {
                      channelfuture1.addListener(genericfuturelistener);
-@@ -226,7 +237,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -226,7 +231,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
                          // note: don't add the genericfuturelistener, it's only expected to be called once...
                          this.channel.write(extraPacket).addListener(ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE);
                      }
@@ -74,7 +60,7 @@ index 77aa911c9830170b9f4b5cdf4e0ee2d4ae0d9a99..005f955cd4db5252ab2a7ed387b4dd91
                  }
                  // Tuinity end - make only one flush call for writing packets
              });
-@@ -235,10 +246,35 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -235,9 +240,39 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
  
      }
  
@@ -106,12 +92,15 @@ index 77aa911c9830170b9f4b5cdf4e0ee2d4ae0d9a99..005f955cd4db5252ab2a7ed387b4dd91
      // Paper start - Async-Anti-Xray - Stop dispatching further packets and return false if the peeked packet is a chunk packet which is not ready
      private boolean sendPacketQueue() { return this.o(); } // OBFHELPER // void -> boolean
      private boolean o() { // void -> boolean
--        if (this.channel != null && this.channel.isOpen()) {
-+        if (this.channel != null && this.channel.isOpen() && this.canFlush) { // Tuinity - let packets build up for the following sendPacketQueue when canFlush is set to true
++        // Tuinity start - let packets build up for the following sendPacketQueue when canFlush is set to true
++        if (!this.canFlush) {
++            return false;
++        }
++        // Tuinity end - let packets build up for the following sendPacketQueue when canFlush is set to true
+         if (this.channel != null && this.channel.isOpen()) {
              Queue queue = this.packetQueue;
  
-             synchronized (this.packetQueue) {
-@@ -250,10 +286,13 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -250,10 +285,13 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
                              return false; // Return false if the peeked packet is a chunk packet which is not ready
                          } else {
                              this.getPacketQueue().poll(); // poll here
