@@ -9,7 +9,7 @@ This patch will be used to optimise out flush calls in later
 patches.
 
 diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
-index 77aa911c9830170b9f4b5cdf4e0ee2d4ae0d9a99..9b3869a21e5ee3c33cdfcb8e468b3006d3bc2bd0 100644
+index 211a6d7206788cbac80f2117d106f39ac3ef6dd5..9bcd6c75bee67d7d42c562ebbe99608d2cbe2614 100644
 --- a/src/main/java/net/minecraft/server/NetworkManager.java
 +++ b/src/main/java/net/minecraft/server/NetworkManager.java
 @@ -175,6 +175,11 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
@@ -24,43 +24,33 @@ index 77aa911c9830170b9f4b5cdf4e0ee2d4ae0d9a99..9b3869a21e5ee3c33cdfcb8e468b3006
          EnumProtocol enumprotocol = EnumProtocol.a(packet);
          EnumProtocol enumprotocol1 = (EnumProtocol) this.channel.attr(NetworkManager.c).get();
  
-@@ -191,7 +196,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -189,7 +194,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
                  this.setProtocol(enumprotocol);
              }
  
--            ChannelFuture channelfuture = (extraPackets == null || extraPackets.isEmpty()) ? this.channel.writeAndFlush(packet) : this.channel.write(packet); // Tuinity - make only one flush call for writing packets
-+            ChannelFuture channelfuture = (flush && (extraPackets == null || extraPackets.isEmpty())) ? this.channel.writeAndFlush(packet) : this.channel.write(packet); // Tuinity - make only one flush call for writing packets // Tuinity - add flush parameter
+-            ChannelFuture channelfuture = this.channel.writeAndFlush(packet);
++            ChannelFuture channelfuture = (flush) ? this.channel.writeAndFlush(packet) : this.channel.write(packet); // Tuinity - add flush parameter
  
              if (genericfuturelistener != null) {
                  channelfuture.addListener(genericfuturelistener);
-@@ -204,7 +209,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
-                     // note: don't add the genericfuturelistener, it's only expected to be called once...
-                     this.channel.write(extraPacket).addListener(ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE);
-                 }
--                this.channel.flush();
-+                if (flush) this.channel.flush(); // Tuinity - add flush parameter
-             }
-             // Tuinity end - make only one flush call for writing packets
-         } else {
-@@ -213,7 +218,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -202,7 +207,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
                      this.setProtocol(enumprotocol);
                  }
  
--                ChannelFuture channelfuture1 = (extraPackets == null || extraPackets.isEmpty()) ? this.channel.writeAndFlush(packet) : this.channel.write(packet); // Tuinity - make only one flush call for writing packets
-+                ChannelFuture channelfuture1 = (flush && (extraPackets == null || extraPackets.isEmpty())) ? this.channel.writeAndFlush(packet) : this.channel.write(packet); // Tuinity - make only one flush call for writing packets // Tuinity - add flush parameter
+-                ChannelFuture channelfuture1 = this.channel.writeAndFlush(packet);
++                ChannelFuture channelfuture1 = (flush) ? this.channel.writeAndFlush(packet) : this.channel.write(packet); // Tuinity - add flush parameter
  
                  if (genericfuturelistener != null) {
                      channelfuture1.addListener(genericfuturelistener);
-@@ -226,7 +231,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
-                         // note: don't add the genericfuturelistener, it's only expected to be called once...
-                         this.channel.write(extraPacket).addListener(ChannelFutureListener.FIRE_EXCEPTION_ON_FAILURE);
-                     }
--                    this.channel.flush();
-+                    if (flush) this.channel.flush(); // Tuinity - add flush parameter
-                 }
-                 // Tuinity end - make only one flush call for writing packets
-             });
-@@ -235,9 +240,39 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -216,16 +221,46 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+         java.util.List<Packet> extraPackets = packet.getExtraPackets();
+         if (extraPackets != null && !extraPackets.isEmpty()) {
+             for (Packet extraPacket : extraPackets) {
+-                this.dispatchPacket(extraPacket, genericfuturelistener);
++                this.writePacket(extraPacket, genericfuturelistener, flush); // Tuinity - add flush parameter
+             }
+         }
+         // Paper end
  
      }
  
@@ -100,7 +90,7 @@ index 77aa911c9830170b9f4b5cdf4e0ee2d4ae0d9a99..9b3869a21e5ee3c33cdfcb8e468b3006
          if (this.channel != null && this.channel.isOpen()) {
              Queue queue = this.packetQueue;
  
-@@ -250,10 +285,13 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+@@ -238,10 +273,13 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
                              return false; // Return false if the peeked packet is a chunk packet which is not ready
                          } else {
                              this.getPacketQueue().poll(); // poll here
