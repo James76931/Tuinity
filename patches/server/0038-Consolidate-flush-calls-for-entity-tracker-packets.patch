@@ -22,10 +22,10 @@ With this change I could get all 200 on at 0ms ping.
 So in general this patch should reduce Netty I/O thread load.
 
 diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-index 88a62ebb09297165fc6a4b01c00a41175d4e28f5..43fe706deb953deafc413e4a0240d331c86711f3 100644
+index ea878b5fcfd088df12e1e2f473975371232f975c..73a9668ed280925f013191a1c17b013a3a5af022 100644
 --- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
 +++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
-@@ -823,7 +823,25 @@ public class ChunkProviderServer extends IChunkProvider {
+@@ -850,7 +850,25 @@ public class ChunkProviderServer extends IChunkProvider {
              this.world.getMethodProfiler().exit();
          }
  
